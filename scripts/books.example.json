@@ -1,0 +1,39 @@
+{
+  "books": [
+    {
+      "id": "inference-engineering",
+      "pdf": "~/Documents/books/inference-engineering.pdf",
+      "title": "Inference Engineering",
+      "author": "Philip Kiely",
+      "subtitle": "A field manual for serving generative models",
+      "year": 2026,
+      "topics": ["Inference", "GPUs", "Production"],
+      "cover_page": 1,
+      "profile": "inference",
+      "skip_toc": ["table of contents"],
+      "source_url": "https://www.baseten.co/inference-engineering/digital-download/",
+      "source_label": "Baseten digital download"
+    },
+    {
+      "id": "pmpp",
+      "pdf": "~/Documents/books/pmpp.pdf",
+      "title": "Programming Massively Parallel Processors",
+      "author": "David B. Kirk and Wen-mei W. Hwu",
+      "subtitle": "A hands-on approach to CUDA",
+      "year": 2010,
+      "topics": ["CUDA", "Parallelism", "GPU computing"],
+      "cover_page": 6,
+      "profile": "elsevier",
+      "skip_toc": [
+        "front cover",
+        "copyright page",
+        "contents",
+        "dedication",
+        "index",
+        "programming massively parallel processors"
+      ],
+      "source_url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
+      "source_label": "Elsevier · 4th edition"
+    }
+  ]
+}

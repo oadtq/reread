@@ -34,6 +34,26 @@
       ],
       "source_url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0",
       "source_label": "Elsevier · 4th edition"
+    },
+    {
+      "id": "ddia",
+      "pdf": "~/Documents/books/designing-data-intensive-applications.pdf",
+      "title": "Designing Data-Intensive Applications",
+      "author": "Martin Kleppmann",
+      "subtitle": "The big ideas behind reliable, scalable, and maintainable systems",
+      "year": 2017,
+      "topics": ["Distributed systems", "Databases", "Data architecture"],
+      "cover_page": 1,
+      "profile": "oreilly",
+      "skip_toc": [
+        "copyright",
+        "table of contents",
+        "index",
+        "about the author",
+        "colophon"
+      ],
+      "source_url": "https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/",
+      "source_label": "O'Reilly"
     }
   ]
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { loadCatalog } from "@/lib/book/load";
+import { ContinueReading } from "@/components/book/continue-reading";
 import { ThemeToggle } from "@/components/book/theme-toggle";
+import { loadCatalog } from "@/lib/book/load";
 
 export default function LibraryPage() {
   const catalog = loadCatalog();
@@ -25,18 +26,18 @@ export default function LibraryPage() {
           <div className="catalog-list">
             {catalog.books.length === 0 ? (
               <p className="catalog-subtitle">
-                No books on the shelf. Add the sample guide, or extract a PDF you own — see the README.
+                No books on the shelf. Extract a PDF you own — see the README.
               </p>
             ) : null}
             {catalog.books.map((book) => (
               <article key={book.id} className="catalog-row">
-                <Link href={`/${book.id}/${book.startSlug}`} className="catalog-cover" aria-label={book.title}>
+                <Link href={`/${book.id}`} className="catalog-cover" aria-label={book.title}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={book.cover} alt="" />
                 </Link>
                 <div className="catalog-copy">
                   <h2>
-                    <Link href={`/${book.id}/${book.startSlug}`}>{book.title}</Link>
+                    <Link href={`/${book.id}`}>{book.title}</Link>
                   </h2>
                   <p className="catalog-subtitle">{book.subtitle}</p>
                   <p className="catalog-meta">
@@ -50,6 +51,7 @@ export default function LibraryPage() {
                       </a>
                     </p>
                   ) : null}
+                  <ContinueReading bookId={book.id} startSlug={book.startSlug} />
                 </div>
               </article>
             ))}

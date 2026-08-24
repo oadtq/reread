@@ -18,12 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "content"
 PUBLIC_BOOKS = ROOT / "public" / "books"
 
-FIGURE_RE = re.compile(r"^(?:Figure|FIGURE)\s+((?:[A-Z]\.)?\d+(?:\.\d+)?)\s*[.:]?", re.I)
+FIGURE_RE = re.compile(r"^(?:Figure|FIGURE)\s+((?:[A-Z]\.)?\d+(?:[.-]\d+)?)\s*[.:]?", re.I)
 CAPTION_VERB_RE = re.compile(r"^(shows|show|illustrates|illustrated|depicts)\b", re.I)
 FIGURE_DPI = 288
 SECTION_HEAD_RE = re.compile(r"^\d+(?:\.\d+)+\s+\S")
-CHAPTER_LINE_RE = re.compile(r"^(CHAPTER|APPENDIX)\s+([0-9A-Z]+)$", re.I)
-HYPHEN_RE = re.compile(r"^(.*?)([A-Za-z0-9]+)[-‐‑‒–]\s*$")
+CHAPTER_LINE_RE = re.compile(r"^(CHAPTER|APPENDIX|PART)\s+([0-9A-Z]+)$", re.I)
+OPENER_LABEL = {"chapter": "Chapter", "appendix": "Appendix", "part": "Part"}
+HYPHEN_RE = re.compile(r"^(.*?)([A-Za-z0-9.]+)([`*]*)[-‐‑‒–]([`*]*)\s*$")
 KEEP_HYPHEN = {"to", "re", "pre", "co", "ex", "in", "un", "non", "e", "x"}
 COMPOUND_SECONDS = {
     "leading", "function", "functions", "based", "only", "purpose", "centric",
@@ -95,7 +96,7 @@ def load_specs(only_id: str | None = None) -> list[BookSpec]:
     return specs
 
 
-def figure_caption_id(text: str, size: float | None = None) -> str | None:
+def figure_caption_id(text: str, size: float | None = None, italic: bool = False) -> str | None:
     """True figure labels, not body sentences like 'Figure 4.1 shows…'."""
     match = FIGURE_RE.match(text.strip())
     if not match:
@@ -104,6 +105,8 @@ def figure_caption_id(text: str, size: float | None = None) -> str | None:
     if CAPTION_VERB_RE.match(rest):
         return None
     if size is not None and size >= 10.6 and rest and not rest.startswith(":"):
+        return None
+    if rest and rest[:1].islower() and not italic:
         return None
     return match.group(1)
 
@@ -216,7 +219,7 @@ def span_style(span: dict, raw: str) -> str:
     token = re.sub(r"^[\s.,;:()]+|[\s.,;:()]+$", "", raw.strip())
     if is_math_font(font):
         return "math"
-    if is_code_font(font) or (token and CODEISH_RE.match(token)):
+    if is_code_font(font) or (token and CODEISH_RE.match(token) and token.lower().rstrip(".") not in {"e.g", "i.e"}):
         return "code"
     if is_italic_font(font, flags):
         return "italic"
@@ -226,8 +229,12 @@ def span_style(span: dict, raw: str) -> str:
 
 
 def spans_to_markdown(spans: list[dict]) -> str:
+    sizes = [span["size"] for span in spans if span.get("text", "").strip()]
+    line_size = max(sizes) if sizes else 0
     pieces: list[tuple[str, str]] = []
     for span in spans:
+        if line_size and span.get("size", line_size) < line_size * 0.75:
+            continue
         raw = fix_ligatures(span["text"].replace("\u2003", " ").replace("\t", " "))
         if is_math_font(span.get("font") or ""):
             raw = remap_math(raw)
@@ -235,9 +242,10 @@ def spans_to_markdown(spans: list[dict]) -> str:
             continue
         chunks: list[tuple[str, str | None]] = [(raw, None)]
         split = re.match(r"^(.*\S)(\s*)\*$", raw)
-        if split and split.group(1).strip() not in {"*", "×"}:
+        code_star = is_code_font(span.get("font") or "")
+        if split and split.group(1).strip() not in {"*", "×"} and not code_star:
             chunks = [(split.group(1), None), (split.group(2) + "×", "math")]
-        elif raw.strip() in {"*", "∗"}:
+        elif raw.strip() in {"*", "∗"} and not code_star:
             chunks = [("×", "math")]
         for chunk, forced in chunks:
             style = forced or span_style(span, chunk)
@@ -245,23 +253,54 @@ def spans_to_markdown(spans: list[dict]) -> str:
                 pieces[-1] = (style, pieces[-1][1] + chunk)
             else:
                 pieces.append((style, chunk))
-    text = "".join(wrap_style(style, chunk) for style, chunk in pieces)
-    text = CUDA_TOKEN_RE.sub(lambda match: md_escape_code(match.group(1)), text)
-    text = re.sub(r"(?<=[\dA-Za-z\)])\*(?=[\dA-Za-z\(])", "×", text)
+    wrapped: list[str] = []
+    for style, chunk in pieces:
+        if style in {"text", "math"}:
+            chunk = re.sub(r"(?<=[\dA-Za-z\)])\*(?=[\dA-Za-z\(])", "×", chunk)
+        wrapped.append(wrap_style(style, chunk))
+    text = "".join(wrapped)
+
+    def keep_or_code(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token.lower().rstrip(".") in {"e.g", "i.e"}:
+            return token
+        return md_escape_code(token)
+
+    parts = re.split(r"(`+[^`]*`+)", text)
+    text = "".join(
+        CUDA_TOKEN_RE.sub(keep_or_code, part) if index % 2 == 0 else part
+        for index, part in enumerate(parts)
+    )
     text = re.sub(r"`(\S+)`(?=[A-Za-z])", r"`\1` ", text)
     return re.sub(r" {2,}", " ", text).strip()
 
 
+def ends_with_break_hyphen(text: str) -> bool:
+    return bool(HYPHEN_RE.match(text.rstrip()))
+
+
 def join_hyphen(previous: str, current: str) -> str:
-    match = HYPHEN_RE.match(previous)
+    match = HYPHEN_RE.match(previous.rstrip())
     if not match:
         return previous.rstrip() + " " + current
     head, last = match.group(1), match.group(2)
-    nxt = re.match(r"^([A-Za-z]+)", current)
-    rest = nxt.group(1) if nxt else ""
-    if last.lower() in KEEP_HYPHEN or rest.lower() in COMPOUND_SECONDS:
-        return head + last + "-" + current
-    return head + last + current
+    rest = current.lstrip()
+    while rest[:1] in {"*", "`"}:
+        rest = rest[1:]
+    nxt = re.match(r"^([A-Za-z0-9.]+)", rest)
+    word = nxt.group(1) if nxt else ""
+    if last.lower() in KEEP_HYPHEN or word.lower() in COMPOUND_SECONDS:
+        glued = last + "-" + rest
+    else:
+        glued = last + rest
+    return head + glued
+
+
+def join_wrapped(previous: str, current: str) -> str:
+    prev, cur = previous.rstrip(), current.lstrip()
+    if prev.endswith("*") and cur.startswith("*"):
+        return prev[:-1] + " " + cur[1:]
+    return prev + " " + cur
 
 
 def toc_entries(doc: pymupdf.Document, spec: BookSpec) -> list[dict]:
@@ -322,6 +361,14 @@ def collect_lines(page: pymupdf.Page, page_no: int, spec: BookSpec, figure_clips
                     continue
                 if re.fullmatch(r"\d+", text) and size < 12:
                     continue
+            if spec.profile == "oreilly":
+                page_h = page.cropbox.height
+                if y0 > page_h - 55 and size <= 10:
+                    continue
+                if size <= 8.2:
+                    continue
+                if DOT_LEADERS.search(text):
+                    continue
             markdown = spans_to_markdown(spans)
             records.append(
                 {
@@ -329,6 +376,7 @@ def collect_lines(page: pymupdf.Page, page_no: int, spec: BookSpec, figure_clips
                     "md": markdown or text,
                     "size": size,
                     "bold": any((span.get("flags", 0) & BOLD_FLAG) or "Bold" in span.get("font", "") for span in spans),
+                    "italic": any(is_italic_font(span.get("font") or "", span.get("flags") or 0) for span in spans),
                     "x": x0,
                     "x1": x1,
                     "y": y0,
@@ -366,6 +414,22 @@ def merge_same_row(records: list[dict]) -> list[dict]:
     return merged
 
 
+def reorder_two_column(records: list[dict], spec: BookSpec) -> list[dict]:
+    """Read left column then right on O'Reilly glossary-style pages."""
+    if spec.profile != "oreilly" or len(records) < 20:
+        return records
+    left = [rec for rec in records if rec["x"] < 200]
+    right = [rec for rec in records if rec["x"] >= 200]
+    left_body = [rec for rec in left if rec["size"] < 14]
+    right_body = [rec for rec in right if rec["size"] < 14]
+    if len(left_body) < 8 or len(right_body) < 8:
+        return records
+    display = [rec for rec in records if rec["size"] >= 18]
+    left_rest = sorted((rec for rec in left if rec["size"] < 18), key=lambda rec: (rec["y"], rec["x"]))
+    right_rest = sorted((rec for rec in right if rec["size"] < 18), key=lambda rec: (rec["y"], rec["x"]))
+    return display + left_rest + right_rest
+
+
 def merge_display_titles(records: list[dict]) -> list[dict]:
     out: list[dict] = []
     index = 0
@@ -383,8 +447,8 @@ def merge_display_titles(records: list[dict]) -> list[dict]:
             ):
                 titles.append(records[cursor]["text"])
                 cursor += 1
-            label = "Chapter" if kind.lower() == "chapter" else "Appendix"
-            if kind.lower() == "appendix":
+            label = OPENER_LABEL.get(kind.lower(), kind.title())
+            if kind.lower() in {"appendix", "part"}:
                 number = number.upper()
             title = " ".join(titles).strip()
             rec = {
@@ -452,7 +516,7 @@ def bind_display_openers(records: list[dict]) -> list[dict]:
         )
         if label_i is None:
             continue
-        kind = "Chapter" if records[label_i]["text"].strip().upper() == "CHAPTER" else "Appendix"
+        kind = OPENER_LABEL.get(records[label_i]["text"].strip().lower(), records[label_i]["text"].strip().title())
         number = ""
         titles: list[str] = []
         started = False
@@ -495,6 +559,17 @@ def classify(rec: dict, spec: BookSpec) -> str:
     text = rec["text"]
     if rec.get("kind") == "heading":
         return "heading"
+    if spec.profile == "oreilly":
+        if rec["size"] >= 15.5 or CHAPTER_LINE_RE.match(text):
+            return "heading"
+        fig = FIGURE_RE.match(text)
+        if fig:
+            rest = text[fig.end() :].strip()
+            if rec.get("italic") or not rest or rest[:1].isupper():
+                return "caption"
+        if text.startswith("•"):
+            return "list"
+        return "body"
     if spec.profile == "inference":
         if rec["size"] >= 12 or SECTION_HEAD_RE.match(text):
             return "heading"
@@ -536,13 +611,25 @@ def attach_kinds(records: list[dict], spec: BookSpec) -> list[dict]:
             rec["kind"] = "body"
     for index, rec in enumerate(kept):
         previous = kept[index - 1] if index else None
-        if (
+        continue_caption = (
             previous
             and previous["kind"] == "caption"
             and rec["kind"] == "body"
             and rec["page"] == previous["page"]
             and rec["size"] < 10.6
-        ):
+        )
+        if spec.profile == "oreilly":
+            caption_open = previous and (
+                ends_with_break_hyphen(previous["text"])
+                or not re.search(r'[.!?]"?$', previous["text"].rstrip())
+            )
+            continue_caption = bool(
+                continue_caption
+                and caption_open
+                and rec.get("italic")
+                and rec["text"][:1].islower()
+            )
+        if continue_caption:
             rec["kind"] = "caption"
     return kept
 
@@ -550,10 +637,10 @@ def attach_kinds(records: list[dict], spec: BookSpec) -> list[dict]:
 def join_text(parts: list[str]) -> str:
     text = parts[0]
     for part in parts[1:]:
-        if HYPHEN_RE.match(re.sub(r"\*", "", text)):
+        if ends_with_break_hyphen(text):
             text = join_hyphen(text, part)
         else:
-            text = text.rstrip() + " " + part
+            text = join_wrapped(text, part)
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -576,7 +663,34 @@ def flush_paragraph(kind: str, parts: list[str]) -> dict | None:
     return {"kind": kind, "text": text}
 
 
-def records_to_blocks(records: list[dict]) -> list[dict]:
+def oreilly_lines_wrap(last: dict, nxt: dict, wrap_gap: float) -> bool:
+    """Join wrapped print lines without gluing the next paragraph or list item."""
+    if nxt["page"] == last["page"] + 1:
+        return not re.search(r'[.!?]"?$', last["text"]) and (
+            nxt["text"][:1].islower() or ends_with_break_hyphen(last["text"])
+        )
+    if nxt["page"] != last["page"]:
+        return False
+    if re.match(r"^\d+\.\s", nxt["text"]):
+        return False
+    # Two-column pages continue from the bottom of the left column into the top of the right.
+    if (
+        last["x"] < 200 <= nxt["x"]
+        and last["y"] > 520
+        and nxt["y"] < 320
+        and (nxt["text"][:1].islower() or ends_with_break_hyphen(last["text"]))
+    ):
+        return True
+    gap = nxt["y"] - last["y1"]
+    if not -4 <= gap <= wrap_gap:
+        return False
+    if nxt["x"] - last["x"] < 10:
+        return True
+    return nxt["text"][:1].islower() or ends_with_break_hyphen(last["text"])
+
+
+def records_to_blocks(records: list[dict], spec: BookSpec | None = None) -> list[dict]:
+    wrap_gap = 1.0 if spec and spec.profile == "oreilly" else 8
     blocks: list[dict] = []
     index = 0
     while index < len(records):
@@ -604,7 +718,10 @@ def records_to_blocks(records: list[dict]) -> list[dict]:
             parts = [rec["text"]]
             index += 1
             while index < len(records) and records[index]["kind"] == "caption":
-                parts.append(records[index]["text"])
+                nxt = records[index]
+                if FIGURE_RE.search(nxt["text"]) and any(FIGURE_RE.search(part) for part in parts):
+                    break
+                parts.append(nxt["text"])
                 index += 1
             blocks.append({"kind": "caption", "text": join_caption(parts), "page": rec["page"]})
             continue
@@ -613,18 +730,21 @@ def records_to_blocks(records: list[dict]) -> list[dict]:
         index += 1
         while index < len(records):
             nxt = records[index]
-            indented = nxt["x"] >= last["x"] + 10
-            same_page = (
-                nxt["page"] == last["page"]
-                and (nxt["y"] - last["y1"]) <= 8
-                and not indented
-            )
-            across_page = (
-                nxt["page"] == last["page"] + 1
-                and not re.search(r'[.!?]"?$', last["text"])
-                and (nxt["text"][:1].islower() or bool(HYPHEN_RE.match(last["text"])))
-            )
-            gap_ok = same_page or across_page
+            if spec and spec.profile == "oreilly":
+                gap_ok = oreilly_lines_wrap(last, nxt, wrap_gap)
+            else:
+                indented = nxt["x"] >= last["x"] + 10
+                same_page = (
+                    nxt["page"] == last["page"]
+                    and (nxt["y"] - last["y1"]) <= wrap_gap
+                    and not indented
+                )
+                across_page = (
+                    nxt["page"] == last["page"] + 1
+                    and not re.search(r'[.!?]"?$', last["text"])
+                    and (nxt["text"][:1].islower() or ends_with_break_hyphen(last["text"]))
+                )
+                gap_ok = same_page or across_page
             list_wrap = kind == "list" and nxt["kind"] == "body" and gap_ok
             body_wrap = kind == nxt["kind"] == "body" and gap_ok
             if not list_wrap and not body_wrap:
@@ -873,7 +993,8 @@ def extract_figures(doc: pymupdf.Document, spec: BookSpec) -> tuple[dict[str, st
                 text = "".join(span["text"] for span in spans).strip()
                 size = max(span["size"] for span in spans) if spans else 0
                 bbox = pymupdf.Rect(line["bbox"])
-                fig_id = figure_caption_id(text, size)
+                italic = any(is_italic_font(span.get("font") or "", span.get("flags") or 0) for span in spans)
+                fig_id = figure_caption_id(text, size, italic=italic)
                 if fig_id:
                     captions.append((fig_id, bbox))
                 elif 8.6 <= size <= 10.2:
@@ -946,9 +1067,12 @@ def insert_figures(blocks: list[dict], src_by_id: dict[str, str]) -> list[dict]:
 
 def heading_key(text: str) -> tuple[str, str] | None:
     match = re.match(r"^(chapter|appendix)\s+([0-9a-z]+)\b", text, re.I)
-    if not match:
-        return None
-    return match.group(1).lower(), match.group(2).upper()
+    if match:
+        return match.group(1).lower(), match.group(2).upper()
+    match = re.match(r"^part\s+([ivxlcdm]+)\b", text, re.I)
+    if match:
+        return "part", match.group(1).upper()
+    return None
 
 
 def canonicalize_headings(blocks: list[dict], entries: list[dict]) -> list[dict]:
@@ -976,7 +1100,7 @@ def reflow_around_figures(blocks: list[dict]) -> list[dict]:
             and following
             and following["kind"] == "body"
             and not re.search(r'[.!?]"?$', current["text"])
-            and (following["text"][:1].islower() or bool(HYPHEN_RE.match(current["text"])))
+            and (following["text"][:1].islower() or ends_with_break_hyphen(current["text"]))
         ):
             out.append({**current, "text": join_text([current["text"], following["text"]])})
             out.append(figure)
@@ -1095,10 +1219,17 @@ def extract_book(spec: BookSpec) -> dict:
 
     lines: list[dict] = []
     start_page = min(entry["page"] for entry in entries)
-    for page_index in range(max(0, start_page - 1), doc.page_count):
-        lines.extend(collect_lines(doc[page_index], page_index + 1, spec, figure_clips.get(page_index + 1, [])))
+    last_kept = max(entry["page"] for entry in entries)
+    skip = {norm(item) for item in spec.skip_toc}
+    end_page = doc.page_count
+    for _level, title, page in doc.get_toc():
+        if norm(title) in skip and page > last_kept:
+            end_page = min(end_page, max(last_kept, page - 1))
+    for page_index in range(max(0, start_page - 1), end_page):
+        page_recs = collect_lines(doc[page_index], page_index + 1, spec, figure_clips.get(page_index + 1, []))
+        lines.extend(reorder_two_column(page_recs, spec))
     lines = attach_kinds(merge_display_titles(lines), spec)
-    blocks = insert_figures(merge_split_tables(records_to_blocks(lines)), figure_src)
+    blocks = insert_figures(merge_split_tables(records_to_blocks(lines, spec)), figure_src)
     blocks = reflow_around_figures(canonicalize_headings(blocks, entries))
     grouped = split_sections(blocks, entries)
 

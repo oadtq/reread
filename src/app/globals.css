@@ -189,8 +189,18 @@ html[data-theme="night"] :focus-visible {
   color: var(--mute);
 }
 
+.catalog-continue {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.catalog-continue a {
+  color: var(--mute);
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .catalog-source a:hover {
+  .catalog-source a:hover,
+  .catalog-continue a:hover {
     color: var(--ink);
   }
 }
@@ -336,20 +346,12 @@ html[data-theme="night"] :focus-visible {
   align-self: flex-start;
 }
 
-.book-article:has(.page-rail) {
-  display: grid;
-  grid-template-columns: minmax(0, var(--reader-measure)) 13rem;
-  gap: 4rem;
-  align-items: start;
-  max-width: 64rem;
-  flex-basis: 64rem;
-}
-
 .reader-heading {
   padding-bottom: 0;
 }
 
-.reader-heading h1 {
+.reader-heading h1,
+.reader-heading h2 {
   max-width: 28ch;
   margin-top: 0.5rem;
   font-size: clamp(1.75rem, 3vw, 2.125rem);
@@ -357,6 +359,10 @@ html[data-theme="night"] :focus-visible {
   line-height: 1.12;
   letter-spacing: -0.03em;
   text-wrap: balance;
+}
+
+.reader-heading h2 {
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
 }
 
 .reader-meta {
@@ -370,23 +376,22 @@ html[data-theme="night"] :focus-visible {
   margin-top: 1.25rem;
 }
 
-.page-rail {
-  position: sticky;
-  top: 1.5rem;
-  padding: 0.25rem 0 0 1.5rem;
-  border-left: 1px solid var(--line);
+.book-stack {
+  min-width: 0;
 }
 
-.page-rail a {
-  display: block;
-  padding: 0.25rem 0;
-  color: var(--mute);
-  font-size: 0.8125rem;
-  line-height: 1.4;
+.book-section {
+  scroll-margin-top: 1.5rem;
+  padding: 4rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.book-section:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .page-rail a:hover,
   .quiet-link:hover {
     color: var(--ink);
   }
@@ -790,7 +795,6 @@ html[data-theme="night"] .segmented button[aria-pressed="true"] {
 @media (prefers-reduced-motion: reduce) {
   .btn,
   .segmented button,
-  .page-rail a,
   .pager a,
   .catalog-copy h2 a,
   .section-children a,
@@ -815,18 +819,6 @@ html[data-theme="night"] .segmented button[aria-pressed="true"] {
 
   .library-intro h1 {
     font-size: 2.75rem;
-  }
-}
-
-@media (max-width: 1400px) {
-  .book-article:has(.page-rail) {
-    display: block;
-    max-width: var(--reader-measure);
-    flex-basis: var(--reader-measure);
-  }
-
-  .page-rail {
-    display: none;
   }
 }
 
@@ -961,8 +953,18 @@ html[data-theme="night"] .segmented button[aria-pressed="true"] {
     padding: 3rem 0 7rem;
   }
 
-  .reader-heading h1 {
+  .book-section {
+    scroll-margin-top: 8rem;
+    padding: 3rem 0;
+  }
+
+  .reader-heading h1,
+  .reader-heading h2 {
     font-size: 1.75rem;
+  }
+
+  .reader-heading h2 {
+    font-size: 1.5rem;
   }
 
   .reader-body {

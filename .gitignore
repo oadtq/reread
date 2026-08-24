@@ -20,10 +20,9 @@ node_modules/
 # copied from pdfjs-dist on install
 /public/pdf.worker.min.mjs
 
-# extracted book assets (covers, figures) except the bundled sample
+# extracted book assets (covers, figures)
 /public/books/*
-!/public/books/deepread-guide/
-!/public/books/deepread-guide/**
+!/public/books/.gitkeep
 
 # local extraction toolchain
 /.venv/

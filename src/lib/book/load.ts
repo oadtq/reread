@@ -129,10 +129,7 @@ export function loadNav(bookId: string): BookNav {
   return JSON.parse(readFileSync(path.join(ROOT, bookId, "nav.json"), "utf8")) as BookNav;
 }
 
-export function loadPage(bookId: string, slug: string): BookPage | null {
-  const nav = loadNav(bookId);
-  const meta = nav.pagesMeta.find((page) => page.slug === slug);
-  if (!meta) return null;
+function pageFromFile(bookId: string, meta: PageMeta): BookPage {
   const parsed = matter(readFileSync(path.join(ROOT, bookId, "pages", meta.file), "utf8"));
   return {
     title: String(parsed.data.title),
@@ -142,6 +139,18 @@ export function loadPage(bookId: string, slug: string): BookPage | null {
     order: Number(parsed.data.order),
     body: parsed.content.trim(),
   };
+}
+
+export function loadPage(bookId: string, slug: string): BookPage | null {
+  const nav = loadNav(bookId);
+  const meta = nav.pagesMeta.find((page) => page.slug === slug);
+  if (!meta) return null;
+  return pageFromFile(bookId, meta);
+}
+
+export function loadPages(bookId: string): BookPage[] {
+  const nav = loadNav(bookId);
+  return nav.pagesMeta.map((meta) => pageFromFile(bookId, meta));
 }
 
 export function imageDimensionsFromBody(body: string): ImageDimensions {

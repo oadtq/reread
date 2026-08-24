@@ -1,6 +1,4 @@
-# Generated editions stay on this machine. Only the sample guide is public.
+# Generated editions stay on this machine.
 *
 !.gitignore
 !catalog.json
-!deepread-guide/
-!deepread-guide/**

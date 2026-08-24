@@ -1,14 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useActiveSection } from "@/components/book/book-reader";
 import { cn } from "@/lib/cn";
 import type { NavNode } from "@/lib/book/load";
-
-function contains(node: NavNode, slug: string): boolean {
-  if (node.slug === slug) return true;
-  return node.children.some((child) => contains(child, slug));
-}
 
 function matches(node: NavNode, query: string): boolean {
   if (node.title.toLowerCase().includes(query)) return true;
@@ -26,26 +21,26 @@ function titleFor(nodes: NavNode[], slug: string): string | null {
 
 function Tree({
   nodes,
-  bookId,
   active,
   query,
+  onNavigate,
   depth = 0,
 }: {
   nodes: NavNode[];
-  bookId: string;
   active: string;
   query: string;
+  onNavigate: () => void;
   depth?: number;
 }) {
   return (
-    <ul className={cn(depth > 0 && "ml-3")}>
+    <ul className={cn(depth > 0 && "pl-3")}>
       {nodes.map((node) => (
         <TreeItem
           key={node.slug}
           node={node}
-          bookId={bookId}
           active={active}
           query={query}
+          onNavigate={onNavigate}
           depth={depth}
         />
       ))}
@@ -55,55 +50,39 @@ function Tree({
 
 function TreeItem({
   node,
-  bookId,
   active,
   query,
+  onNavigate,
   depth,
 }: {
   node: NavNode;
-  bookId: string;
   active: string;
   query: string;
+  onNavigate: () => void;
   depth: number;
 }) {
-  const inPath = contains(node, active);
-  const [open, setOpen] = useState(inPath);
   if (query && !matches(node, query)) return null;
   const current = node.slug === active;
-  const chapter = node.level <= 2;
-  const expanded = Boolean(query) || open || inPath;
+  const top = depth === 0;
 
   return (
-    <li className="mt-0.5">
-      <div className="flex items-start gap-0.5">
-        {node.children.length > 0 ? (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-label={expanded ? `Collapse ${node.title}` : `Expand ${node.title}`}
-            onClick={() => setOpen((value) => !value)}
-            className="mt-0.5 flex size-6 shrink-0 items-center justify-center text-sm text-faint"
-          >
-            {expanded ? "−" : "+"}
-          </button>
-        ) : (
-          <span className="mt-0.5 size-6 shrink-0" />
+    <li className={cn(top ? "mt-2 first:mt-0" : "mt-px")}>
+      <a
+        href={`#${node.slug}`}
+        data-nav="toc"
+        data-active={current ? "true" : undefined}
+        aria-current={current ? "page" : undefined}
+        onClick={onNavigate}
+        className={cn(
+          "toc-link block rounded-md px-2 py-1 text-[0.8125rem] leading-snug",
+          top ? "font-medium" : "font-normal",
+          current ? "bg-press text-ink" : depth >= 2 ? "text-mute" : "text-ink",
         )}
-        <Link
-          href={`/${bookId}/${node.slug}`}
-          data-active={current ? "true" : undefined}
-          aria-current={current ? "page" : undefined}
-          className={cn(
-            "toc-link block flex-1 rounded-md px-2 py-1.5 text-[0.8125rem] leading-snug",
-            chapter ? "font-medium" : "font-normal",
-            current ? "bg-press text-ink" : chapter ? "text-ink" : "text-mute",
-          )}
-        >
-          {node.title}
-        </Link>
-      </div>
-      {expanded && node.children.length > 0 ? (
-        <Tree nodes={node.children} bookId={bookId} active={active} query={query} depth={depth + 1} />
+      >
+        {node.title}
+      </a>
+      {node.children.length > 0 && (!query || node.children.some((child) => matches(child, query))) ? (
+        <Tree nodes={node.children} active={active} query={query} onNavigate={onNavigate} depth={depth + 1} />
       ) : null}
     </li>
   );
@@ -112,12 +91,13 @@ function TreeItem({
 export function Sidebar({
   bookId,
   tree,
-  active,
+  startSlug,
 }: {
   bookId: string;
   tree: NavNode[];
-  active: string;
+  startSlug: string;
 }) {
+  const active = useActiveSection(bookId, startSlug);
   const [query, setQuery] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -179,7 +159,7 @@ export function Sidebar({
       </div>
       <nav ref={navRef} className="book-toc px-2 py-3 pb-10">
         {hasResults ? (
-          <Tree nodes={tree} bookId={bookId} active={active} query={normalized} />
+          <Tree nodes={tree} active={active} query={normalized} onNavigate={() => setMobileOpen(false)} />
         ) : (
           <p className="toc-empty" role="status">No matching sections</p>
         )}

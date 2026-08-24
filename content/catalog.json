@@ -1,19 +1,5 @@
 {
   "name": "DeepRead",
   "kicker": "Technical library",
-  "books": [
-    {
-      "id": "deepread-guide",
-      "title": "Using DeepRead",
-      "author": "DeepRead",
-      "subtitle": "A local library for books you own",
-      "year": 2026,
-      "topics": ["Reading", "PDF", "Markdown"],
-      "pages": 8,
-      "sections": 4,
-      "figures": 1,
-      "cover": "/books/deepread-guide/cover.svg",
-      "startSlug": "preface"
-    }
-  ]
+  "books": []
 }

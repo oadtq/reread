@@ -59,6 +59,13 @@ For a repo with one numbered folder per chapter:
   --source-label "Source notes"
 ```
 
+For a GitHub markdown open book that ships `chapters-md.txt` (Stas Bekman's *Machine Learning Engineering* is the reference):
+
+```bash
+git clone --depth 1 https://github.com/stas00/ml-engineering.git /tmp/ml-engineering
+.venv/bin/python scripts/ingest-open-book.py /tmp/ml-engineering
+```
+
 ## What is in git, and what is not
 
 | Tracked | Local only |

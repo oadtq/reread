@@ -27,6 +27,7 @@ export type BookNav = {
   topics: string[];
   pages: number;
   cover: string;
+  printPages?: boolean;
   tree: NavNode[];
   pagesMeta: PageMeta[];
 };

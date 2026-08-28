@@ -117,6 +117,3 @@ export function subscribeProgress(onStoreChange: () => void) {
   };
 }
 
-export function restorePositionScript(): string {
-  return `(function(){var root=document.getElementById("book-scroll");if(!root)return;var bookId=root.getAttribute("data-book-id")||"";var start=root.getAttribute("data-start-slug")||"";var hash=location.hash.replace(/^#/,"");try{hash=decodeURIComponent(hash)}catch(e){}var all={};var saved="";try{all=JSON.parse(localStorage.getItem(${JSON.stringify(PROGRESS_KEY)})||"{}")||{};if(all[bookId]&&typeof all[bookId].slug==="string")saved=all[bookId].slug}catch(e){}var id=hash||saved||start;if(!id)return;var el=document.getElementById(id);if(!el&&saved)el=document.getElementById(saved);if(!el&&start)el=document.getElementById(start);if(!el)return;el.scrollIntoView({behavior:"instant",block:"start"});var section=el.closest("[data-slug]")||el;var slug=section.getAttribute("data-slug")||el.id;var title=section.getAttribute("data-title")||slug;try{all[bookId]={slug:slug,title:title,at:Date.now()};localStorage.setItem(${JSON.stringify(PROGRESS_KEY)},JSON.stringify(all))}catch(e){}if(!hash){try{history.replaceState(null,"","#"+slug)}catch(e){}}})();`;
-}

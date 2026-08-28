@@ -12,8 +12,8 @@ export function ContinueReading({ bookId, startSlug }: { bookId: string; startSl
   if (!entry?.title || entry.slug === startSlug) return null;
 
   return (
-    <p className="catalog-continue">
-      <a href={`/${bookId}#${entry.slug}`}>Continue: {entry.title}</a>
-    </p>
+    <a href={`/${bookId}#${entry.slug}`} className="catalog-resume">
+      Resume at <b>{entry.title}</b>
+    </a>
   );
 }

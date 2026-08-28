@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { HashRedirect } from "@/components/book/book-reader";
 import { loadCatalog, loadNav, loadPage } from "@/lib/book/load";
 
 type PageProps = {
@@ -35,7 +36,7 @@ export default async function LegacySectionPage({ params }: PageProps) {
   const href = `/${book}#${slug}`;
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: `location.replace(${JSON.stringify(href)})` }} />
+      <HashRedirect href={href} />
       <p className="p-8">
         <a href={href}>Continue to this section</a>
       </p>

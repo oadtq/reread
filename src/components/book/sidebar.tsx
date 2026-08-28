@@ -19,6 +19,10 @@ function titleFor(nodes: NavNode[], slug: string): string | null {
   return null;
 }
 
+function countLeaves(nodes: NavNode[]): number {
+  return nodes.reduce((total, node) => total + 1 + countLeaves(node.children), 0);
+}
+
 function Tree({
   nodes,
   active,
@@ -33,7 +37,7 @@ function Tree({
   depth?: number;
 }) {
   return (
-    <ul className={cn(depth > 0 && "pl-3")}>
+    <ul className={cn(depth > 0 && "toc-nest")}>
       {nodes.map((node) => (
         <TreeItem
           key={node.slug}
@@ -63,21 +67,17 @@ function TreeItem({
 }) {
   if (query && !matches(node, query)) return null;
   const current = node.slug === active;
-  const top = depth === 0;
 
   return (
-    <li className={cn(top ? "mt-2 first:mt-0" : "mt-px")}>
+    <li className={depth === 0 ? "mt-3 first:mt-0" : "mt-px"}>
       <a
         href={`#${node.slug}`}
         data-nav="toc"
+        data-depth={Math.min(depth, 3)}
         data-active={current ? "true" : undefined}
         aria-current={current ? "page" : undefined}
         onClick={onNavigate}
-        className={cn(
-          "toc-link block rounded-md px-2 py-1 text-[0.8125rem] leading-snug",
-          top ? "font-medium" : "font-normal",
-          current ? "bg-press text-ink" : depth >= 2 ? "text-mute" : "text-ink",
-        )}
+        className="toc-link"
       >
         {node.title}
       </a>
@@ -104,26 +104,32 @@ export function Sidebar({
   const navRef = useRef<HTMLElement>(null);
   const normalized = query.trim().toLowerCase();
   const hasResults = !normalized || tree.some((node) => matches(node, normalized));
+  const total = countLeaves(tree);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setMobileOpen(true);
         inputRef.current?.focus();
+        inputRef.current?.select();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Keep the active entry in view as the reader scrolls, but never fight the
+  // user while they are filtering the list.
   useEffect(() => {
+    if (normalized) return;
     const nav = navRef.current;
     const current = nav?.querySelector<HTMLElement>("[data-active='true']");
     if (!nav || !current) return;
     const top =
       current.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop - nav.clientHeight / 3;
-    nav.scrollTo({ top: Math.max(0, top) });
-  }, [active]);
+    nav.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }, [active, normalized]);
 
   return (
     <aside className="book-sidebar" data-open={mobileOpen ? "true" : undefined}>
@@ -138,32 +144,39 @@ export function Sidebar({
           <span className="kicker">Contents</span>
           <span className="sidebar-current">{titleFor(tree, active) ?? "Browse this book"}</span>
         </span>
-        <span className="sidebar-toggle-icon" aria-hidden="true">{mobileOpen ? "Close" : "Open"}</span>
+        <span className="sidebar-toggle-icon" aria-hidden="true">
+          ▾
+        </span>
       </button>
       <div id="book-contents" className="sidebar-panel">
-      <div className="shrink-0 px-3 pt-3 pb-2">
-        <label className="block">
-          <span className="sr-only">Search sections</span>
-          <span className="field-wrap">
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search sections"
-              type="search"
-              className="field"
-            />
-            <kbd className="field-kbd">⌘K</kbd>
-          </span>
-        </label>
-      </div>
-      <nav ref={navRef} className="book-toc px-2 py-3 pb-10">
-        {hasResults ? (
-          <Tree nodes={tree} active={active} query={normalized} onNavigate={() => setMobileOpen(false)} />
-        ) : (
-          <p className="toc-empty" role="status">No matching sections</p>
-        )}
-      </nav>
+        <div className="sidebar-head">
+          <label className="block">
+            <span className="sr-only">Search sections</span>
+            <span className="field-wrap">
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setQuery("");
+                }}
+                placeholder={`Search ${total} sections`}
+                type="search"
+                className="field"
+              />
+              <kbd className="field-kbd">⌘K</kbd>
+            </span>
+          </label>
+        </div>
+        <nav ref={navRef} className="book-toc" aria-label="Table of contents">
+          {hasResults ? (
+            <Tree nodes={tree} active={active} query={normalized} onNavigate={() => setMobileOpen(false)} />
+          ) : (
+            <p className="toc-empty" role="status">
+              No sections match “{query.trim()}”.
+            </p>
+          )}
+        </nav>
       </div>
     </aside>
   );

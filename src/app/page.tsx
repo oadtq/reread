@@ -1,71 +1,49 @@
 import Link from "next/link";
-import { ContinueReading } from "@/components/book/continue-reading";
 import { ThemeToggle } from "@/components/book/theme-toggle";
+import { Catalog } from "@/components/library/catalog";
 import { loadCatalog } from "@/lib/book/load";
 
 export default function LibraryPage() {
   const catalog = loadCatalog();
-  const topics = catalog.books.flatMap((book) => book.topics).filter((topic, index, all) => all.indexOf(topic) === index);
+  const { books } = catalog;
+
+  const totals = books.reduce(
+    (sum, book) => ({
+      pages: sum.pages + book.pages,
+      sections: sum.sections + book.sections,
+      figures: sum.figures + book.figures,
+    }),
+    { pages: 0, sections: 0, figures: 0 },
+  );
 
   return (
     <div className="library-shell">
-      <header className="book-topbar">
-        <p className="brand">DeepRead</p>
-        <ThemeToggle />
+      <header className="site-topbar">
+        <div className="site-topbar-inner">
+          <Link href="/" className="brand">
+            DeepRead
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
+
       <main className="library-main">
         <header className="library-intro">
-          <p className="kicker">{catalog.books.length} {catalog.books.length === 1 ? "volume" : "volumes"}</p>
-          <h1>Technical library</h1>
-          <p className="library-lede">
-            Searchable editions of books you extract locally. DeepRead does not ship copyrighted books.
+          <h1>Library</h1>
+          <p className="library-summary">
+            {books.length} {books.length === 1 ? "book" : "books"} · {totals.pages.toLocaleString()} pages ·{" "}
+            {totals.sections.toLocaleString()} sections · {totals.figures.toLocaleString()} figures
           </p>
         </header>
 
-        <section className="library-catalog">
-          <div className="catalog-list">
-            {catalog.books.length === 0 ? (
-              <p className="catalog-subtitle">
-                No books on the shelf. Extract a PDF you own — see the README.
-              </p>
-            ) : null}
-            {catalog.books.map((book) => (
-              <article key={book.id} className="catalog-row">
-                <Link href={`/${book.id}`} className="catalog-cover" aria-label={book.title}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={book.cover} alt="" />
-                </Link>
-                <div className="catalog-copy">
-                  <h2>
-                    <Link href={`/${book.id}`}>{book.title}</Link>
-                  </h2>
-                  <p className="catalog-subtitle">{book.subtitle}</p>
-                  <p className="catalog-meta">
-                    {book.author} · {book.year} · {book.pages} pages · {book.sections} sections · {book.figures} figures
-                  </p>
-                  <p className="catalog-meta">{book.topics.join(", ")}</p>
-                  {book.sourceUrl ? (
-                    <p className="catalog-source">
-                      <a href={book.sourceUrl} target="_blank" rel="noreferrer">
-                        {book.sourceLabel ?? book.sourceUrl}
-                      </a>
-                    </p>
-                  ) : null}
-                  <ContinueReading bookId={book.id} startSlug={book.startSlug} />
-                </div>
-              </article>
-            ))}
-          </div>
-          <aside className="catalog-index">
-            <p className="kicker">Topics</p>
-            <ul>
-              {topics.map((topic) => (
-                <li key={topic}>{topic}</li>
-              ))}
-            </ul>
-          </aside>
-        </section>
+        <Catalog books={books} />
       </main>
+
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          Book text and figures remain under their original copyright.
+        </div>
+      </footer>
     </div>
   );
 }

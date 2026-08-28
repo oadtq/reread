@@ -167,6 +167,30 @@ def is_math_font(font: str) -> bool:
     )
 
 
+CODE_LINE_RATIO = 0.8
+EXAMPLE_CAPTION_RE = re.compile(r"^Example\s+\d+[.-]\d+", re.I)
+CAPTION_LANG_RE = [
+    (re.compile(r"\bcypher\b", re.I), "cypher"),
+    (re.compile(r"\bsparql\b", re.I), "sparql"),
+    (re.compile(r"\bturtle\b|\bnotation\s*3\b|\bn3\b", re.I), "turtle"),
+    (re.compile(r"\brdf/?xml\b", re.I), "xml"),
+    (re.compile(r"\bjson\b", re.I), "json"),
+    (re.compile(r"\bxml\b", re.I), "xml"),
+    (re.compile(r"\bprotocol\s*buffers?\b|\bprotobuf\b", re.I), "protobuf"),
+    (re.compile(r"\bthrift\b", re.I), "thrift"),
+    (re.compile(r"\bavro\b", re.I), "avro"),
+    (re.compile(r"\bdatalog\b", re.I), "datalog"),
+    (re.compile(r"\bsql\b|relational schema", re.I), "sql"),
+    (re.compile(r"\bjavascript\b|\bnode\.js\b", re.I), "javascript"),
+    (re.compile(r"\bpython\b", re.I), "python"),
+    (re.compile(r"\bjava\b", re.I), "java"),
+    (re.compile(r"\bcuda\b|\bc\+\+\b", re.I), "cpp"),
+    (re.compile(r"\bcss\b", re.I), "css"),
+    (re.compile(r"\bruby\b", re.I), "ruby"),
+    (re.compile(r"\bbash\b|\bshell\b", re.I), "bash"),
+]
+
+
 def is_code_font(font: str) -> bool:
     lower = font.lower()
     return any(token in lower for token in ("cour", "mono", "consol", "typewriter")) or font in {
@@ -174,6 +198,21 @@ def is_code_font(font: str) -> bool:
         "AdvP900D",
         "AdvP4C4E51",
     }
+
+
+def line_code_ratio(spans: list[dict]) -> float:
+    """Share of visible characters set in a monospace/code font."""
+    code_n = 0
+    total = 0
+    for span in spans:
+        chunk = (span.get("text") or "").strip()
+        if not chunk:
+            continue
+        n = len(chunk)
+        total += n
+        if is_code_font(span.get("font") or ""):
+            code_n += n
+    return code_n / total if total else 0.0
 
 
 def is_italic_font(font: str, flags: int) -> bool:
@@ -335,13 +374,14 @@ def collect_lines(page: pymupdf.Page, page_no: int, spec: BookSpec, figure_clips
                 continue
             plain_parts = []
             for span in spans:
-                chunk = span["text"].replace("\u2003", " ").replace("\t", " ")
+                chunk = span["text"].replace("\u2003", " ").replace("\t", "    ")
                 if is_math_font(span.get("font") or ""):
                     chunk = remap_math(chunk)
                 plain_parts.append(chunk)
-            text = fix_ligatures("".join(plain_parts))
-            text = re.sub(r"\s+", " ", text).strip()
-            if not text:
+            joined = fix_ligatures("".join(plain_parts))
+            code_line = line_code_ratio(spans) >= CODE_LINE_RATIO
+            text = joined.rstrip() if code_line else re.sub(r"\s+", " ", joined).strip()
+            if not text.strip():
                 continue
             size = max(span["size"] for span in spans)
             x0, y0, x1, y1 = line["bbox"]
@@ -357,7 +397,7 @@ def collect_lines(page: pymupdf.Page, page_no: int, spec: BookSpec, figure_clips
                     continue
                 if DOT_LEADERS.search(text):
                     continue
-                if size < 9.2 and not FIGURE_RE.search(text):
+                if size < 9.2 and not FIGURE_RE.search(text) and not code_line:
                     continue
                 if re.fullmatch(r"\d+", text) and size < 12:
                     continue
@@ -365,18 +405,19 @@ def collect_lines(page: pymupdf.Page, page_no: int, spec: BookSpec, figure_clips
                 page_h = page.cropbox.height
                 if y0 > page_h - 55 and size <= 10:
                     continue
-                if size <= 8.2:
+                if size <= 8.2 and not code_line:
                     continue
                 if DOT_LEADERS.search(text):
                     continue
-            markdown = spans_to_markdown(spans)
+            markdown = text if code_line else (spans_to_markdown(spans) or text)
             records.append(
                 {
                     "text": text,
-                    "md": markdown or text,
+                    "md": markdown,
                     "size": size,
                     "bold": any((span.get("flags", 0) & BOLD_FLAG) or "Bold" in span.get("font", "") for span in spans),
                     "italic": any(is_italic_font(span.get("font") or "", span.get("flags") or 0) for span in spans),
+                    "code_line": code_line,
                     "x": x0,
                     "x1": x1,
                     "y": y0,
@@ -405,6 +446,8 @@ def merge_same_row(records: list[dict]) -> list[dict]:
             and rec["page"] == merged[-1]["page"]
             and abs(rec["y"] - merged[-1]["y"]) < 3
             and rec["size"] < 20
+            and not rec.get("code_line")
+            and not merged[-1].get("code_line")
         ):
             merged[-1]["text"] = merged[-1]["text"] + " " + rec["text"]
             merged[-1]["md"] = merged[-1]["md"] + " " + rec["md"]
@@ -555,10 +598,102 @@ def bind_display_openers(records: list[dict]) -> list[dict]:
     return [rec for index, rec in enumerate(records) if index not in drop]
 
 
+def strip_md_marks(text: str) -> str:
+    return re.sub(r"[*`]", "", text).strip()
+
+
+def recent_example_caption(blocks: list[dict]) -> str:
+    if not blocks:
+        return ""
+    plain = strip_md_marks(blocks[-1]["text"])
+    return plain if EXAMPLE_CAPTION_RE.match(plain) else ""
+
+
+def guess_code_language(body: str, caption: str = "") -> str:
+    for pattern, lang in CAPTION_LANG_RE:
+        if caption and pattern.search(caption):
+            return lang
+    text = body.strip()
+    if re.search(r"^#!/", text) or re.search(r"^\s*\$\s+\w+", text, re.M):
+        return "bash"
+    if text.startswith("{") or text.startswith("["):
+        return "json"
+    if re.match(r"^<\?xml\b|^<rdf:|^<[A-Za-z]", text):
+        return "xml"
+    if re.search(r"^@prefix\b", text, re.M | re.I):
+        return "turtle"
+    if re.search(r"^message\s+\w+\s*\{", text, re.M) or re.search(
+        r"^\s*(required|optional|repeated)\s+\w+.*=\s*\d+", text, re.M
+    ):
+        return "protobuf"
+    if re.search(r"^struct\s+\w+\s*\{", text, re.M):
+        return "thrift"
+    if re.search(r"^record\s+\w+\s*\{", text, re.M):
+        return "avro"
+    if re.search(
+        r"\bCREATE\s+TABLE\b|\bPRIMARY\s+KEY\b|\bBEGIN\s+TRANSACTION\b|\bFOR\s+UPDATE\b|"
+        r"\bSELECT\b.+\bFROM\b|\bALTER\s+TABLE\b|\bUPDATE\s+\w+\s+SET\b",
+        text,
+        re.I | re.S,
+    ):
+        return "sql"
+    if re.search(r"\bPREFIX\b.+\bSELECT\b|\bSELECT\b.+\bWHERE\s*\{", text, re.I | re.S):
+        return "sparql"
+    if re.search(r"\bMATCH\b|\bRETURN\b|-\[:[A-Za-z_]", text):
+        return "cypher"
+    if re.search(r"__global__|__device__|__shared__|cudaMalloc", text):
+        return "cpp"
+    if re.search(r"^[\w.#*:>-][\w.#*\s:>-]*\{\s*[\w-]+\s*:", text, re.S):
+        return "css"
+    if re.search(r"\bHash\.new\b|\.each\s+do\s+\|", text):
+        return "ruby"
+    if re.search(r"\bdef\s+\w+\(|\bimport\s+\w+", text):
+        return "python"
+    if re.search(r"\b(function|const|let|var|=>)\b|\b===\b|\.aggregate\(", text):
+        return "javascript"
+    if re.search(r"\bawk\b.+\bsort\b|\buniq\s+-c\b", text):
+        return "bash"
+    return ""
+
+
+def code_records_to_text(recs: list[dict]) -> str:
+    if not recs:
+        return ""
+    base_x = min(rec["x"] for rec in recs)
+    char_w = max(4.0, recs[0]["size"] * 0.55)
+    same_page_gaps = [
+        nxt["y"] - prev["y"]
+        for prev, nxt in zip(recs, recs[1:])
+        if nxt["page"] == prev["page"] and 0 < nxt["y"] - prev["y"] < 40
+    ]
+    typical = sorted(same_page_gaps)[len(same_page_gaps) // 2] if same_page_gaps else recs[0]["size"] * 1.2
+    lines: list[str] = []
+    for index, rec in enumerate(recs):
+        if index:
+            prev = recs[index - 1]
+            if rec["page"] == prev["page"] and rec["y"] - prev["y"] > typical * 1.55:
+                lines.append("")
+        extra = max(0, round((rec["x"] - base_x) / char_w))
+        text = rec["text"]
+        if extra and not text.startswith(" "):
+            text = " " * extra + text
+        lines.append(text)
+    return "\n".join(lines)
+
+
+def fence_code(body: str, lang: str) -> str:
+    ticks = "```"
+    while ticks in body:
+        ticks += "`"
+    return f"{ticks}{lang}\n{body.rstrip()}\n{ticks}"
+
+
 def classify(rec: dict, spec: BookSpec) -> str:
     text = rec["text"]
     if rec.get("kind") == "heading":
         return "heading"
+    if rec.get("code_line"):
+        return "code"
     if spec.profile == "oreilly":
         if rec["size"] >= 15.5 or CHAPTER_LINE_RE.match(text):
             return "heading"
@@ -724,6 +859,22 @@ def records_to_blocks(records: list[dict], spec: BookSpec | None = None) -> list
                 parts.append(nxt["text"])
                 index += 1
             blocks.append({"kind": "caption", "text": join_caption(parts), "page": rec["page"]})
+            continue
+        if kind == "code":
+            code_recs = [rec]
+            index += 1
+            while index < len(records) and records[index]["kind"] == "code":
+                nxt = records[index]
+                prev = code_recs[-1]
+                if nxt["page"] > prev["page"] + 1:
+                    break
+                if nxt["page"] == prev["page"] and nxt["y"] - prev["y"] > 36:
+                    break
+                code_recs.append(nxt)
+                index += 1
+            body = code_records_to_text(code_recs)
+            lang = guess_code_language(body, recent_example_caption(blocks))
+            blocks.append({"kind": "code", "text": fence_code(body, lang), "page": rec["page"]})
             continue
         parts = [strip_bullet(rec["md"]) if kind == "list" else rec["md"]]
         last = rec

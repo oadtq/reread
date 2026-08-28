@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { ThemeToggle } from "@/components/book/theme-toggle";
+import { ReaderPrefs } from "@/components/book/reader-prefs";
 import {
   getActiveSlug,
   ignoreSpy,
@@ -64,55 +64,83 @@ export function useActiveSection(bookId: string, startSlug: string) {
   );
 }
 
+export function HashRedirect({ href }: { href: string }) {
+  useLayoutEffect(() => {
+    location.replace(href);
+  }, [href]);
+  return null;
+}
+
 export function BookTopbar({ title }: { title: string }) {
   return (
     <header className="book-topbar">
-      <div className="flex min-w-0 items-center gap-3">
+      <nav className="crumbs" aria-label="Breadcrumb">
         <Link href="/" className="brand">
           DeepRead
         </Link>
-        <span className="hidden text-mute sm:inline" aria-hidden="true">
+        <span className="crumb-sep" aria-hidden="true">
           /
         </span>
-        <p className="hidden truncate text-sm text-mute sm:block">{title}</p>
-      </div>
-      <div className="flex items-center gap-3">
+        <span className="crumb-current">{title}</span>
+      </nav>
+      <div className="flex items-center gap-2">
+        <span className="progress-readout" aria-hidden="true" />
         <Link href="/" className="quiet-link">
           Library
         </Link>
-        <ThemeToggle />
+        <ReaderPrefs />
       </div>
       <span className="reading-progress" aria-hidden="true" />
     </header>
   );
 }
 
+function whenLaidOut(el: HTMLElement, onReady: () => void) {
+  if (el.clientHeight > 0) {
+    onReady();
+    return () => {};
+  }
+  const observer = new ResizeObserver(() => {
+    if (el.clientHeight <= 0) return;
+    observer.disconnect();
+    onReady();
+  });
+  observer.observe(el);
+  return () => observer.disconnect();
+}
+
 export function BookSpy({ bookId, startSlug }: { bookId: string; startSlug: string }) {
   useLayoutEffect(() => {
     const main = document.getElementById("book-scroll");
     if (!main) return;
-    const hash = slugFromHash();
-    const hashEl = hash ? document.getElementById(hash) : null;
-    const saved = readProgress(bookId)?.slug;
-    const savedEl = saved ? document.getElementById(saved) : null;
-    const startEl = document.getElementById(startSlug);
-    const el = hashEl ?? savedEl ?? startEl;
-    if (!el) return;
-    el.scrollIntoView({ behavior: "instant", block: "start" });
-    const section = sectionOf(el);
-    if (!section) return;
-    markSection(bookId, section.slug, section.title, hash ? "silent" : "replace");
+    return whenLaidOut(main, () => {
+      const hash = slugFromHash();
+      const hashEl = hash ? document.getElementById(hash) : null;
+      const saved = readProgress(bookId)?.slug;
+      const savedEl = saved ? document.getElementById(saved) : null;
+      const startEl = document.getElementById(startSlug);
+      const el = hashEl ?? savedEl ?? startEl;
+      if (!el) return;
+      ignoreSpy(400);
+      el.scrollIntoView({ behavior: "instant", block: "start" });
+      const section = sectionOf(el);
+      if (!section) return;
+      markSection(bookId, section.slug, section.title, hash ? "silent" : "replace");
+    });
   }, [bookId, startSlug]);
 
   useEffect(() => {
     const main = document.getElementById("book-scroll");
     if (!(main instanceof HTMLElement)) return;
     const bar = document.querySelector<HTMLElement>(".reading-progress");
+    const readout = document.querySelector<HTMLElement>(".progress-readout");
     let frame = 0;
 
     const pick = () => {
       const windowScroll = !usesContainerScroll(main);
-      if (bar) bar.style.width = `${scrollProgress(main, windowScroll)}%`;
+      const percent = scrollProgress(main, windowScroll);
+      if (bar) bar.style.width = `${percent}%`;
+      if (readout) readout.textContent = `${Math.round(percent)}%`;
       if (isSpyIgnored()) return;
       const slug = sectionAtReadLine(main, windowScroll);
       if (!slug || slug === getActiveSlug(bookId)) return;

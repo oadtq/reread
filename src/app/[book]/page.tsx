@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
 import { BookArticle } from "@/components/book/article";
 import { BookSpy, BookTopbar } from "@/components/book/book-reader";
-import { headingsFromBody } from "@/components/book/page-rail";
 import { Sidebar } from "@/components/book/sidebar";
+import { headingsFromBody } from "@/lib/book/headings";
 import { imageDimensionsFromBody, loadCatalog, loadNav, loadPages } from "@/lib/book/load";
-import { restorePositionScript } from "@/lib/book/progress";
 
 type PageProps = {
   params: Promise<{ book: string }>;
@@ -51,16 +50,14 @@ export default async function BookHome({ params }: PageProps) {
   return (
     <div className="book-app" data-book={book}>
       <BookTopbar title={nav.title} />
+      <a href="#book-scroll" className="skip-link">
+        Skip to reading
+      </a>
       <div className="book-grid">
         <Sidebar bookId={book} tree={nav.tree} startSlug={found.startSlug} />
-        <div
-          className="book-main"
-          id="book-scroll"
-          data-book-id={book}
-          data-start-slug={found.startSlug}
-        >
-          <div className="book-article">
-            <div className="book-stack">
+        <div className="book-main" id="book-scroll">
+          <div className="book-canvas">
+            <article className="book-article">
               {pages.map((page, index) => {
                 const headings = headingsBySlug[page.slug] ?? [];
                 const imageDimensions = imageDimensionsFromBody(page.body);
@@ -79,15 +76,22 @@ export default async function BookHome({ params }: PageProps) {
                     id={page.slug}
                     data-slug={page.slug}
                     data-title={page.title}
+                    data-level={page.level}
                     className="book-section"
                   >
                     <header className="reader-heading">
                       <p className="kicker reader-meta">
-                        <span>Print p. {page.page}</span>
-                        <span aria-hidden="true">·</span>
                         <span>
                           Section {index + 1} of {pages.length}
                         </span>
+                        {nav.printPages !== false ? (
+                          <>
+                            <span className="dot" aria-hidden="true">
+                              ·
+                            </span>
+                            <span>Print p. {page.page}</span>
+                          </>
+                        ) : null}
                       </p>
                       <HeadingTag>{page.title}</HeadingTag>
                     </header>
@@ -105,12 +109,11 @@ export default async function BookHome({ params }: PageProps) {
                   </section>
                 );
               })}
-            </div>
+            </article>
           </div>
         </div>
       </div>
       <BookSpy bookId={book} startSlug={found.startSlug} />
-      <script dangerouslySetInnerHTML={{ __html: restorePositionScript() }} />
     </div>
   );
 }
